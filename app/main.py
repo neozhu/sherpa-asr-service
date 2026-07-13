@@ -4,7 +4,7 @@ from fastapi import FastAPI
 from app.api.health import router as health_router
 from app.api.streaming import router as streaming_router
 from app.api.transcriptions import router as transcriptions_router
-from app.asr.recognizer import RecognizerService
+from app.asr.recognizer import OfflineRecognizerService, RecognizerService
 from app.asr.scheduler import StreamingScheduler
 from app.core.config import get_settings
 from app.core.errors import ASRError, asr_error_handler, http_error_handler
@@ -23,12 +23,17 @@ async def lifespan(app: FastAPI):
     app.state.active_uploads = 0
     app.state.upload_semaphore = asyncio.Semaphore(settings.max_concurrent_uploads)
     app.state.recognizer_service = RecognizerService(settings)
+    app.state.offline_recognizer_service = OfflineRecognizerService(settings)
     await app.state.loop.run_in_executor(None, app.state.recognizer_service.start)
-    model_ready.set(1 if app.state.recognizer_service.ready else 0)
+    await app.state.loop.run_in_executor(None, app.state.offline_recognizer_service.start)
+    model_ready.set(
+        1 if app.state.recognizer_service.ready and app.state.offline_recognizer_service.ready else 0
+    )
     app.state.scheduler = StreamingScheduler(settings)
     await app.state.scheduler.start()
     yield
     app.state.recognizer_service.stop()
+    app.state.offline_recognizer_service.stop()
     model_ready.set(0)
     await app.state.scheduler.stop()
 

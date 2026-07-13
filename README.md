@@ -12,7 +12,7 @@ A lightweight, CPU-based Speech-to-Text service using `k2-fsa/sherpa-onnx` for u
 
 ## Runtime
 
-The service is designed for one Uvicorn worker, one loaded `sherpa_onnx.OnlineRecognizer`, bounded upload concurrency, and bounded WebSocket stream buffers.
+The service is designed for one Uvicorn worker, a streaming `sherpa_onnx.OnlineRecognizer` for WebSocket audio, an offline trilingual Paraformer recognizer for uploaded audio, bounded upload concurrency, and bounded WebSocket stream buffers.
 
 ## Model files
 
@@ -27,6 +27,14 @@ models/streaming-paraformer-zh-en/
 
 or override `MODEL_ENCODER`, `MODEL_DECODER`, and `MODEL_TOKENS`.
 
+Uploaded audio also requires the FP32 offline trilingual Paraformer files at:
+
+```text
+models/sherpa-onnx-paraformer-trilingual-zh-cantonese-en/
+├── model.onnx
+└── tokens.txt
+```
+
 ## Configuration
 
 The service reads configuration from environment variables. The most important values are:
@@ -38,6 +46,8 @@ The service reads configuration from environment variables. The most important v
 | `MODEL_ENCODER` | No | `/models/streaming-paraformer-zh-en/encoder.int8.onnx` | Encoder model path inside the container or host. |
 | `MODEL_DECODER` | No | `/models/streaming-paraformer-zh-en/decoder.int8.onnx` | Decoder model path inside the container or host. |
 | `MODEL_TOKENS` | No | `/models/streaming-paraformer-zh-en/tokens.txt` | Token file path inside the container or host. |
+| `OFFLINE_MODEL` | No | `/models/sherpa-onnx-paraformer-trilingual-zh-cantonese-en/model.onnx` | FP32 offline Paraformer model used for uploaded audio. |
+| `OFFLINE_MODEL_TOKENS` | No | `/models/sherpa-onnx-paraformer-trilingual-zh-cantonese-en/tokens.txt` | Token file for the offline upload model. |
 | `SHERPA_NUM_THREADS` | No | `4` | CPU threads used by sherpa-onnx. |
 | `MAX_CONCURRENT_UPLOADS` | No | `2` | Maximum concurrent upload transcription requests. |
 | `STREAM_MAX_CONNECTIONS` | No | `20` | Maximum concurrent WebSocket streams. |

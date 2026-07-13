@@ -64,3 +64,45 @@ class RecognizerService:
             self.recognizer.decode_stream(stream)
         result = self.recognizer.get_result(stream)
         return getattr(result, "text", str(result)).strip()
+
+
+class OfflineRecognizerService:
+    def __init__(self, settings: Settings):
+        self.settings = settings
+        self.recognizer = None
+        self.ready = False
+        self.error: str | None = None
+
+    def validate_model_files(self) -> None:
+        for path in (self.settings.offline_model, self.settings.offline_model_tokens):
+            if not Path(path).is_file():
+                raise FileNotFoundError(path)
+
+    def start(self) -> None:
+        try:
+            self.validate_model_files()
+            import sherpa_onnx
+
+            self.recognizer = sherpa_onnx.OfflineRecognizer.from_paraformer(
+                paraformer=self.settings.offline_model,
+                tokens=self.settings.offline_model_tokens,
+                num_threads=self.settings.sherpa_num_threads,
+                provider=self.settings.sherpa_provider,
+            )
+            self.ready = True
+            self.error = None
+        except Exception as exc:
+            self.ready = False
+            self.error = exc.__class__.__name__
+
+    def stop(self) -> None:
+        self.ready = False
+        self.recognizer = None
+
+    def transcribe(self, samples: np.ndarray) -> str:
+        if not self.recognizer:
+            raise RuntimeError("Recognizer is not initialized")
+        stream = self.recognizer.create_stream()
+        stream.accept_waveform(SAMPLE_RATE, samples)
+        self.recognizer.decode_stream(stream)
+        return stream.result.text.strip()

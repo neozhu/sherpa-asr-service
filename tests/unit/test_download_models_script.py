@@ -14,3 +14,5 @@ def test_download_models_script_downloads_required_int8_model_files():
     assert "encoder.int8.onnx" in content
     assert "decoder.int8.onnx" in content
     assert "tokens.txt" in content
+    assert 'offline_model_name="sherpa-onnx-paraformer-trilingual-zh-cantonese-en"' in content
+    assert "model.onnx" in content

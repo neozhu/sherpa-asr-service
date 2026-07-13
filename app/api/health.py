@@ -12,7 +12,10 @@ async def live() -> dict[str, str]:
 @router.get("/health/ready")
 async def ready(request: Request):
     state = request.app.state
-    if not getattr(state.recognizer_service, "ready", False):
+    if not (
+        getattr(state.recognizer_service, "ready", False)
+        and getattr(state.offline_recognizer_service, "ready", False)
+    ):
         return error_response(503, "model_unavailable", "Model is not ready.")
     return {
         "status": "ready",

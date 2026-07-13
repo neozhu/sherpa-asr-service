@@ -17,6 +17,8 @@ class Settings(BaseSettings):
     model_encoder: str = "/models/streaming-paraformer-zh-en/encoder.int8.onnx"
     model_decoder: str = "/models/streaming-paraformer-zh-en/decoder.int8.onnx"
     model_tokens: str = "/models/streaming-paraformer-zh-en/tokens.txt"
+    offline_model: str = "/models/sherpa-onnx-paraformer-trilingual-zh-cantonese-en/model.onnx"
+    offline_model_tokens: str = "/models/sherpa-onnx-paraformer-trilingual-zh-cantonese-en/tokens.txt"
 
     sherpa_provider: str = "cpu"
     sherpa_num_threads: int = 4

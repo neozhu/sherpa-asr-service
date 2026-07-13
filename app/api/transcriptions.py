@@ -21,7 +21,7 @@ async def transcribe(
     if language not in {"auto", "zh", "en"} or response_format not in {"json", "text"}:
         raise ASRError(400, "invalid_request", "Invalid request.")
     state = request.app.state
-    if not state.recognizer_service.ready:
+    if not state.offline_recognizer_service.ready:
         raise ASRError(503, "model_unavailable", "Model is not ready.")
     if state.upload_semaphore.locked():
         raise ASRError(429, "service_busy", "Concurrency limit reached.")
@@ -36,7 +36,9 @@ async def transcribe(
         duration = len(samples) / SAMPLE_RATE
         if duration > state.settings.max_audio_duration_seconds:
             raise ASRError(413, "audio_too_long", "Audio exceeds duration limit.")
-        text = await request.app.state.loop.run_in_executor(None, state.recognizer_service.transcribe, samples)
+        text = await request.app.state.loop.run_in_executor(
+            None, state.offline_recognizer_service.transcribe, samples
+        )
         processing_time = time.perf_counter() - start
         metrics.upload_duration.observe(processing_time)
         if response_format == "text":
