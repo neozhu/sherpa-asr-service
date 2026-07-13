@@ -17,11 +17,7 @@ services:
     volumes:
       - ./models:/models:ro
     ports:
-      - "127.0.0.1:48732:8000"
-    cpus: 4
-    mem_limit: 4g
-    tmpfs:
-      - /tmp:size=512m,mode=1770
+      - "48732:8000"
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health/ready')"]
       interval: 30s

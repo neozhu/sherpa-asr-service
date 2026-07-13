@@ -1,0 +1,18 @@
+Metadata-Version: 2.4
+Name: sherpa-asr-service
+Version: 0.1.0
+Summary: Lightweight CPU ASR service using sherpa-onnx
+Requires-Python: >=3.12
+License-File: LICENSE
+Requires-Dist: fastapi>=0.115.0
+Requires-Dist: uvicorn[standard]>=0.30.0
+Requires-Dist: python-multipart>=0.0.9
+Requires-Dist: pydantic-settings>=2.4.0
+Requires-Dist: numpy>=1.26.0
+Requires-Dist: prometheus-client>=0.20.0
+Requires-Dist: sherpa-onnx>=1.10.0
+Provides-Extra: test
+Requires-Dist: pytest>=8.0.0; extra == "test"
+Requires-Dist: httpx>=0.27.0; extra == "test"
+Requires-Dist: websockets>=12.0; extra == "test"
+Dynamic: license-file

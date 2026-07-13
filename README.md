@@ -107,23 +107,25 @@ Published images are tagged as:
 - `ghcr.io/<owner>/<repo>:sha-<short-sha>` for traceable builds.
 - `ghcr.io/<owner>/<repo>:<semver>` and `<major>.<minor>` for `v*.*.*` tags.
 
-## Docker deployment
+## Local Docker Compose deployment
 
-The compose file publishes the service on `127.0.0.1:48732` and mounts `./models` read-only.
+The `docker-compose.yaml` file builds the service locally, publishes it on port `48732`, and mounts `./models` read-only.
+
+Before starting, install Docker Engine or Docker Desktop with the Compose plugin and confirm it is available:
+
+```bash
+docker compose version
+```
 
 ### 1. Prepare model files
 
-Put the model files in the host `models` directory:
+On Ubuntu, download the required model files with the included script:
 
 ```bash
-mkdir -p models/streaming-paraformer-zh-en
-# Copy or download the following files into this directory:
-# - encoder.int8.onnx
-# - decoder.int8.onnx
-# - tokens.txt
+bash scripts/download-models.sh
 ```
 
-The final layout should be:
+The script creates the following layout:
 
 ```text
 ./models/streaming-paraformer-zh-en/encoder.int8.onnx
@@ -131,16 +133,20 @@ The final layout should be:
 ./models/streaming-paraformer-zh-en/tokens.txt
 ```
 
-### 2. Create environment variables
+If the model directory already exists, the script stops without overwriting it. You can also place the three required files in this directory manually.
 
-Create a `.env` file next to `compose.yaml`:
+### 2. Create local environment variables
+
+Create a `.env` file next to `docker-compose.yaml`:
 
 ```bash
-cat > .env <<'EOF_ENV'
+cat > .env <<EOF_ENV
 ASR_API_KEYS=current-key,another-key
-ASR_STREAM_TOKEN_SECRET=replace-with-a-long-random-secret-at-least-32-bytes
+ASR_STREAM_TOKEN_SECRET=$(openssl rand -hex 32)
 EOF_ENV
 ```
+
+Use a value you can retain for `ASR_API_KEYS`; clients must send it in the `Authorization: Bearer ...` header.
 
 ### 3. Build and start the service
 
