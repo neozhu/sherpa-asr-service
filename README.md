@@ -51,6 +51,23 @@ export ASR_STREAM_TOKEN_SECRET=replace-with-a-long-random-secret
 uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 1
 ```
 
+
+## GitHub Actions CI/CD
+
+The repository separates CI checks and Docker image publishing into two workflows:
+
+- `.github/workflows/quality-gate.yml` runs Python compile checks and the unit test suite on pull requests, pushes to `main`, and manual runs.
+- `.github/workflows/container-publish.yml` builds the Docker image with Buildx for pull requests without publishing it, then logs in to GitHub Container Registry (GHCR) and pushes images on pushes to `main`, semantic version tags such as `v1.2.3`, and manual workflow runs.
+
+The CI workflow uses the repository secrets `ASR_API_KEYS` and `ASR_STREAM_TOKEN_SECRET` as test-time environment variables. The container publishing workflow uses the repository secret `GHCR_TOKEN` to log in to GHCR. Keep runtime secrets out of the Docker image; pass them when running the container, for example through `.env`, Docker Compose, or your deployment platform.
+
+Published images are tagged as:
+
+- `ghcr.io/<owner>/<repo>:latest` for the default branch.
+- `ghcr.io/<owner>/<repo>:main` for pushes to `main`.
+- `ghcr.io/<owner>/<repo>:sha-<short-sha>` for traceable builds.
+- `ghcr.io/<owner>/<repo>:<semver>` and `<major>.<minor>` for `v*.*.*` tags.
+
 ## Docker deployment
 
 The compose file publishes the service on `127.0.0.1:48732` and mounts `./models` read-only.
