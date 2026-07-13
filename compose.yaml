@@ -1,0 +1,30 @@
+services:
+  sherpa-asr:
+    build: .
+    image: sherpa-asr-service:latest
+    restart: unless-stopped
+    environment:
+      APP_ENV: production
+      ASR_API_KEYS: ${ASR_API_KEYS}
+      ASR_STREAM_TOKEN_SECRET: ${ASR_STREAM_TOKEN_SECRET}
+      MODEL_ENCODER: /models/streaming-paraformer-zh-en/encoder.int8.onnx
+      MODEL_DECODER: /models/streaming-paraformer-zh-en/decoder.int8.onnx
+      MODEL_TOKENS: /models/streaming-paraformer-zh-en/tokens.txt
+      SHERPA_NUM_THREADS: 4
+      MAX_CONCURRENT_UPLOADS: 2
+      STREAM_MAX_CONNECTIONS: 20
+      STREAM_MAX_BATCH_SIZE: 8
+    volumes:
+      - ./models:/models:ro
+    ports:
+      - "127.0.0.1:48732:8000"
+    cpus: 4
+    mem_limit: 4g
+    tmpfs:
+      - /tmp:size=512m,mode=1770
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health/ready')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
