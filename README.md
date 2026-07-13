@@ -42,12 +42,51 @@ The service reads configuration from environment variables. The most important v
 | `MAX_CONCURRENT_UPLOADS` | No | `2` | Maximum concurrent upload transcription requests. |
 | `STREAM_MAX_CONNECTIONS` | No | `20` | Maximum concurrent WebSocket streams. |
 
-## Local run
+## Local development and debugging
+
+Use Python 3.12 or newer. The default local model paths point to `/models/...`, so for a source checkout you should either set the model path environment variables or create an equivalent `/models` mount/symlink.
+
+### 1. Create a virtual environment and install dependencies
 
 ```bash
-pip install -e '.[test]'
+python -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+```
+
+If you also need to run the test suite, install the project with its test extras instead:
+
+```bash
+python -m pip install -e '.[test]'
+```
+
+### 2. Prepare local environment variables
+
+```bash
 export ASR_API_KEYS=current-key
 export ASR_STREAM_TOKEN_SECRET=replace-with-a-long-random-secret
+export MODEL_ENCODER="$PWD/models/streaming-paraformer-zh-en/encoder.int8.onnx"
+export MODEL_DECODER="$PWD/models/streaming-paraformer-zh-en/decoder.int8.onnx"
+export MODEL_TOKENS="$PWD/models/streaming-paraformer-zh-en/tokens.txt"
+```
+
+### 3. Start the service in debug/reload mode
+
+```bash
+uvicorn app.main:app --host 127.0.0.1 --port 8000 --workers 1 --reload
+```
+
+Verify the local process from another terminal:
+
+```bash
+curl http://127.0.0.1:8000/health/live
+curl http://127.0.0.1:8000/health/ready
+```
+
+For production-like local execution without auto-reload, remove `--reload` and keep a single worker:
+
+```bash
 uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 1
 ```
 
@@ -59,7 +98,7 @@ The repository separates CI checks and Docker image publishing into two workflow
 - `.github/workflows/quality-gate.yml` runs Python compile checks and the unit test suite on pull requests, pushes to `main`, and manual runs.
 - `.github/workflows/container-publish.yml` builds the Docker image with Buildx for pull requests without publishing it, then logs in to GitHub Container Registry (GHCR) and pushes images on pushes to `main`, semantic version tags such as `v1.2.3`, and manual workflow runs.
 
-The CI workflow uses the repository secrets `ASR_API_KEYS` and `ASR_STREAM_TOKEN_SECRET` as test-time environment variables. The container publishing workflow uses the repository secret `GHCR_TOKEN` to log in to GHCR. Keep runtime secrets out of the Docker image; pass them when running the container, for example through `.env`, Docker Compose, or your deployment platform.
+The CI workflow uses the repository secrets `ASR_API_KEYS` and `ASR_STREAM_TOKEN_SECRET` as test-time environment variables. The container publishing workflow uses the built-in `GITHUB_TOKEN` with `packages: write` permission to log in to GHCR, so no separate package token secret is required for publishing from this repository. Keep runtime secrets out of the Docker image; pass them when running the container, for example through `.env`, Docker Compose, or your deployment platform.
 
 Published images are tagged as:
 
