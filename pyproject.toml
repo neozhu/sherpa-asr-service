@@ -1,0 +1,25 @@
+[project]
+name = "sherpa-asr-service"
+version = "0.1.0"
+description = "Lightweight CPU ASR service using sherpa-onnx"
+requires-python = ">=3.12"
+dependencies = [
+  "fastapi>=0.115.0",
+  "uvicorn[standard]>=0.30.0",
+  "python-multipart>=0.0.9",
+  "pydantic-settings>=2.4.0",
+  "numpy>=1.26.0",
+  "prometheus-client>=0.20.0",
+  "sherpa-onnx>=1.10.0",
+]
+
+[project.optional-dependencies]
+test = ["pytest>=8.0.0", "httpx>=0.27.0", "websockets>=12.0"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 88
+target-version = "py312"
