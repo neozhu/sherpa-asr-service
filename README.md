@@ -27,6 +27,21 @@ models/streaming-paraformer-zh-en/
 
 or override `MODEL_ENCODER`, `MODEL_DECODER`, and `MODEL_TOKENS`.
 
+## Configuration
+
+The service reads configuration from environment variables. The most important values are:
+
+| Variable | Required | Default | Description |
+| --- | --- | --- | --- |
+| `ASR_API_KEYS` | Yes | empty | Comma-separated API keys accepted by `Authorization: Bearer ...` for upload transcription. |
+| `ASR_STREAM_TOKEN_SECRET` | Yes | `replace-with-a-long-random-secret` | Shared secret used to validate short-lived WebSocket stream tokens. Use a long random value in production. |
+| `MODEL_ENCODER` | No | `/models/streaming-paraformer-zh-en/encoder.int8.onnx` | Encoder model path inside the container or host. |
+| `MODEL_DECODER` | No | `/models/streaming-paraformer-zh-en/decoder.int8.onnx` | Decoder model path inside the container or host. |
+| `MODEL_TOKENS` | No | `/models/streaming-paraformer-zh-en/tokens.txt` | Token file path inside the container or host. |
+| `SHERPA_NUM_THREADS` | No | `4` | CPU threads used by sherpa-onnx. |
+| `MAX_CONCURRENT_UPLOADS` | No | `2` | Maximum concurrent upload transcription requests. |
+| `STREAM_MAX_CONNECTIONS` | No | `20` | Maximum concurrent WebSocket streams. |
+
 ## Local run
 
 ```bash
@@ -36,10 +51,263 @@ export ASR_STREAM_TOKEN_SECRET=replace-with-a-long-random-secret
 uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 1
 ```
 
-## Docker
-
-```bash
-docker compose up --build
-```
+## Docker deployment
 
 The compose file publishes the service on `127.0.0.1:48732` and mounts `./models` read-only.
+
+### 1. Prepare model files
+
+Put the model files in the host `models` directory:
+
+```bash
+mkdir -p models/streaming-paraformer-zh-en
+# Copy or download the following files into this directory:
+# - encoder.int8.onnx
+# - decoder.int8.onnx
+# - tokens.txt
+```
+
+The final layout should be:
+
+```text
+./models/streaming-paraformer-zh-en/encoder.int8.onnx
+./models/streaming-paraformer-zh-en/decoder.int8.onnx
+./models/streaming-paraformer-zh-en/tokens.txt
+```
+
+### 2. Create environment variables
+
+Create a `.env` file next to `compose.yaml`:
+
+```bash
+cat > .env <<'EOF_ENV'
+ASR_API_KEYS=current-key,another-key
+ASR_STREAM_TOKEN_SECRET=replace-with-a-long-random-secret-at-least-32-bytes
+EOF_ENV
+```
+
+### 3. Build and start the service
+
+```bash
+docker compose up --build -d
+```
+
+Check container status and logs:
+
+```bash
+docker compose ps
+docker compose logs -f sherpa-asr
+```
+
+### 4. Verify readiness
+
+```bash
+curl http://127.0.0.1:48732/health/live
+curl http://127.0.0.1:48732/health/ready
+```
+
+The service is ready when `/health/ready` returns `ready: true`.
+
+### 5. Stop or upgrade
+
+```bash
+# Stop the service
+docker compose down
+
+# Pull code changes, rebuild, and restart
+git pull
+docker compose up --build -d
+```
+
+## Client integration
+
+### Upload transcription by cURL
+
+Use `multipart/form-data` with the audio file field named `file`. Supported file formats depend on `ffmpeg`; common formats such as WAV, MP3, M4A, and FLAC are accepted.
+
+```bash
+curl -X POST http://127.0.0.1:48732/v1/audio/transcriptions \
+  -H 'Authorization: Bearer current-key' \
+  -F 'file=@sample.wav' \
+  -F 'language=auto' \
+  -F 'response_format=json'
+```
+
+Use `response_format=text` for a plain text response:
+
+```bash
+curl -X POST http://127.0.0.1:48732/v1/audio/transcriptions \
+  -H 'Authorization: Bearer current-key' \
+  -F 'file=@sample.wav' \
+  -F 'response_format=text'
+```
+
+### Upload transcription by Python
+
+```python
+import requests
+
+base_url = "http://127.0.0.1:48732"
+api_key = "current-key"
+
+with open("sample.wav", "rb") as audio:
+    response = requests.post(
+        f"{base_url}/v1/audio/transcriptions",
+        headers={"Authorization": f"Bearer {api_key}"},
+        files={"file": ("sample.wav", audio, "audio/wav")},
+        data={"language": "auto", "response_format": "json"},
+        timeout=120,
+    )
+
+response.raise_for_status()
+print(response.json())
+```
+
+### Upload transcription by JavaScript/TypeScript
+
+Node.js 18+ includes `fetch`, `FormData`, and `Blob` APIs.
+
+```ts
+import { readFile } from "node:fs/promises";
+
+const baseUrl = "http://127.0.0.1:48732";
+const apiKey = "current-key";
+const audio = await readFile("sample.wav");
+
+const form = new FormData();
+form.append("file", new Blob([audio], { type: "audio/wav" }), "sample.wav");
+form.append("language", "auto");
+form.append("response_format", "json");
+
+const response = await fetch(`${baseUrl}/v1/audio/transcriptions`, {
+  method: "POST",
+  headers: { Authorization: `Bearer ${apiKey}` },
+  body: form,
+});
+
+if (!response.ok) {
+  throw new Error(`ASR request failed: ${response.status} ${await response.text()}`);
+}
+
+console.log(await response.json());
+```
+
+### Streaming transcription protocol
+
+The WebSocket endpoint accepts raw binary frames containing mono PCM16 little-endian audio at 16 kHz. Authentication uses the WebSocket subprotocol list:
+
+```text
+asr.v1, bearer.<stream-token>
+```
+
+A stream token is `base64url(payload).base64url(hmac_sha256(secret, base64url(payload)))`, where the JSON payload contains:
+
+```json
+{"scope":"asr:stream","exp":1893456000,"nonce":"random-nonce"}
+```
+
+After connecting:
+
+1. Send a JSON start message: `{"type":"start","sample_rate":16000,"encoding":"pcm_s16le","language":"auto"}`.
+2. Send binary PCM16 frames. A typical frame size is 20-100 ms, for example 3200 bytes for 100 ms at 16 kHz mono PCM16.
+3. Receive JSON messages: `started`, `partial`, `final`, `completed`, or `error`.
+4. Send `{"type":"commit"}` to force a final segment, or `{"type":"stop"}` to finish the stream.
+
+### Streaming token helper in Python
+
+```python
+import base64
+import hashlib
+import hmac
+import json
+import time
+import uuid
+
+
+def b64url(data: bytes) -> str:
+    return base64.urlsafe_b64encode(data).rstrip(b"=").decode("ascii")
+
+
+def create_stream_token(secret: str, ttl_seconds: int = 60) -> str:
+    payload = {
+        "scope": "asr:stream",
+        "exp": int(time.time()) + ttl_seconds,
+        "nonce": uuid.uuid4().hex,
+    }
+    body = b64url(json.dumps(payload, separators=(",", ":")).encode())
+    signature = b64url(hmac.new(secret.encode(), body.encode(), hashlib.sha256).digest())
+    return f"{body}.{signature}"
+```
+
+### Streaming transcription by Python
+
+This example converts an audio file to the required PCM16 stream with `ffmpeg`, sends it to the service, and prints server events.
+
+```python
+import asyncio
+import json
+import subprocess
+import websockets
+
+# Reuse create_stream_token from the previous example.
+
+base_url = "ws://127.0.0.1:48732"
+secret = "replace-with-a-long-random-secret-at-least-32-bytes"
+token = create_stream_token(secret)
+
+
+async def stream_file(path: str) -> None:
+    ffmpeg = subprocess.Popen(
+        [
+            "ffmpeg",
+            "-i", path,
+            "-f", "s16le",
+            "-acodec", "pcm_s16le",
+            "-ac", "1",
+            "-ar", "16000",
+            "-",
+        ],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+    )
+
+    async with websockets.connect(
+        f"{base_url}/v1/audio/transcriptions/stream",
+        subprotocols=["asr.v1", f"bearer.{token}"],
+    ) as websocket:
+        await websocket.send(json.dumps({
+            "type": "start",
+            "sample_rate": 16000,
+            "encoding": "pcm_s16le",
+            "language": "auto",
+        }))
+
+        async def receive_events() -> None:
+            async for message in websocket:
+                print(message)
+
+        receiver = asyncio.create_task(receive_events())
+        assert ffmpeg.stdout is not None
+        while chunk := ffmpeg.stdout.read(3200):
+            await websocket.send(chunk)
+            await asyncio.sleep(0.1)
+
+        await websocket.send(json.dumps({"type": "stop"}))
+        await receiver
+
+
+asyncio.run(stream_file("sample.wav"))
+```
+
+## Error response format
+
+HTTP and WebSocket errors use this shape:
+
+```json
+{
+  "error": {
+    "code": "authentication_failed",
+    "message": "Invalid API key."
+  }
+}
+```
